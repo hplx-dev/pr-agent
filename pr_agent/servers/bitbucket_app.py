@@ -174,6 +174,7 @@ async def handle_github_webhooks(background_tasks: BackgroundTasks, request: Req
     log_context = {"server_type": "bitbucket_app", "app_name": app_name}
     get_logger().debug(request.headers)
     jwt_header = request.headers.get("authorization", None)
+    input_jwt = None
     if jwt_header:
         input_jwt = jwt_header.split(" ")[1]
     data = await request.json()
@@ -195,22 +196,23 @@ async def handle_github_webhooks(background_tasks: BackgroundTasks, request: Req
 
             sender_id = data.get("data", {}).get("actor", {}).get("account_id", "")
             log_context["sender_id"] = sender_id
-            jwt_parts = input_jwt.split(".")
-            claim_part = jwt_parts[1]
-            claim_part += "=" * (-len(claim_part) % 4)
-            decoded_claims = base64.urlsafe_b64decode(claim_part)
-            claims = json.loads(decoded_claims)
-            client_key = claims["iss"]
-            secrets = json.loads(secret_provider.get_secret(client_key))
-            shared_secret = secrets["shared_secret"]
-            jwt.decode(input_jwt, shared_secret, audience=client_key, algorithms=["HS256"])
-            bearer_token = await get_bearer_token(shared_secret, client_key)
-            context['bitbucket_bearer_token'] = bearer_token
+            if input_jwt:
+                jwt_parts = input_jwt.split(".")
+                claim_part = jwt_parts[1]
+                claim_part += "=" * (-len(claim_part) % 4)
+                decoded_claims = base64.urlsafe_b64decode(claim_part)
+                claims = json.loads(decoded_claims)
+                client_key = claims["iss"]
+                secrets = json.loads(secret_provider.get_secret(client_key))
+                shared_secret = secrets["shared_secret"]
+                jwt.decode(input_jwt, shared_secret, audience=client_key, algorithms=["HS256"])
+                bearer_token = await get_bearer_token(shared_secret, client_key)
+                context['bitbucket_bearer_token'] = bearer_token
             context["settings"] = copy.deepcopy(global_settings)
-            event = data["event"]
+            event = request.headers.get("x-event-key", None)
             agent = PRAgent()
             if event == "pullrequest:created":
-                pr_url = data["data"]["pullrequest"]["links"]["html"]["href"]
+                pr_url = data["pullrequest"]["links"]["html"]["href"]
                 log_context["api_url"] = pr_url
                 log_context["event"] = "pull_request"
                 if pr_url:
@@ -221,10 +223,10 @@ async def handle_github_webhooks(background_tasks: BackgroundTasks, request: Req
                             if get_settings().get("bitbucket_app.pr_commands"):
                                 await _perform_commands_bitbucket("pr_commands", PRAgent(), pr_url, log_context, data)
             elif event == "pullrequest:comment_created":
-                pr_url = data["data"]["pullrequest"]["links"]["html"]["href"]
+                pr_url = data["pullrequest"]["links"]["html"]["href"]
                 log_context["api_url"] = pr_url
                 log_context["event"] = "comment"
-                comment_body = data["data"]["comment"]["content"]["raw"]
+                comment_body = data["comment"]["content"]["raw"]
                 with get_logger().contextualize(**log_context):
                     if get_identity_provider().verify_eligibility("bitbucket",
                                                                      sender_id, pr_url) is not Eligibility.NOT_ELIGIBLE:
@@ -273,7 +275,7 @@ def start():
     app = FastAPI(middleware=middleware)
     app.include_router(router)
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "3000")))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
 
 
 if __name__ == '__main__':

@@ -60,26 +60,30 @@ async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
         signature_header = request.headers.get("x-hub-signature", None)
         verify_signature(body_bytes, webhook_secret, signature_header)
 
-    pr_id = data["pullRequest"]["id"]
-    repository_name = data["pullRequest"]["toRef"]["repository"]["slug"]
-    project_name = data["pullRequest"]["toRef"]["repository"]["project"]["key"]
+    pr_id = data["pullrequest"]["id"]
+    repository_name = data["repository"]["name"]
+    project_name = data["repository"]["workspace"]["slug"]
     bitbucket_server = get_settings().get("BITBUCKET_SERVER.URL")
-    pr_url = f"{bitbucket_server}/projects/{project_name}/repos/{repository_name}/pull-requests/{pr_id}"
+    pr_url = f"{bitbucket_server}/{project_name}/{repository_name}/pull-requests/{pr_id}"
 
     log_context["api_url"] = pr_url
     log_context["event"] = "pull_request"
 
     commands_to_run = []
 
-    if data["eventKey"] == "pr:opened":
+    event_key_header = request.headers.get("x-event-key", None)
+    if event_key_header:
+        get_logger().info(f"Received x-event-key header: {event_key_header}")
+
+    if event_key_header == "pullrequest:created":
         apply_repo_settings(pr_url)
         if get_settings().config.disable_auto_feedback:  # auto commands for PR, and auto feedback is disabled
             get_logger().info(f"Auto feedback is disabled, skipping auto commands for PR {pr_url}", **log_context)
             return
         get_settings().set("config.is_auto_command", True)
         commands_to_run.extend(_get_commands_list_from_settings('BITBUCKET_SERVER.PR_COMMANDS'))
-    elif data["eventKey"] == "pr:comment:added":
-        commands_to_run.append(data["comment"]["text"])
+    elif event_key_header == "pullrequest:comment_created":
+        commands_to_run.append(data["comment"]["content"]["raw"])
     else:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -157,7 +161,7 @@ async def root():
 def start():
     app = FastAPI(middleware=[Middleware(RawContextMiddleware)])
     app.include_router(router)
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "3000")))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
 
 
 if __name__ == "__main__":

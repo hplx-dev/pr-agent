@@ -6,12 +6,12 @@
 
 [config]
 # models
-model="o4-mini"
+model="gemini/gemini-2.5-flash"
 fallback_models=["gpt-4.1"]
 #model_reasoning="o4-mini" # dedicated reasoning model for self-reflection
 #model_weak="gpt-4o" # optional, a weaker model to use for some easier tasks
 # CLI
-git_provider="github"
+git_provider="bitbucket"
 publish_output=true
 publish_output_progress=true
 verbosity_level=0 # 0,1,2
@@ -319,7 +319,7 @@ avoid_full_files = false
 [bitbucket_server]
 # URL to the BitBucket Server instance
 # url = "https://git.bitbucket.com"
-url = ""
+url = "https://bitbucket.org"
 pr_commands = [
     "/describe --pr_description.final_update_message=false",
     "/review",
