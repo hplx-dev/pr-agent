@@ -156,6 +156,7 @@ MAX_TOKENS = {
     "mistral/codestral-mamba-latest": 256000,
     "codestral/codestral-latest": 8191,
     "codestral/codestral-2405": 8191,
+    'ollama/qwen3:14b': 8191,
 }
 
 USER_MESSAGE_ONLY_MODELS = [
