@@ -683,6 +683,7 @@ class PRCodeSuggestions:
                                                         model,
                                                         max_calls=get_settings().pr_code_suggestions.max_number_of_calls,
                                                         add_line_numbers=True)  # decouple hunk with line numbers
+            get_logger().debug(f"Decoupled hunks enabled", artifact=self.patches_diff_list)
             self.patches_diff_list_no_line_numbers = self.remove_line_numbers(self.patches_diff_list)  # decouple hunk
 
         else:

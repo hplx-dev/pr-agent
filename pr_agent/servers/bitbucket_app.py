@@ -122,7 +122,8 @@ def is_bot_user(data) -> bool:
 
 def should_process_pr_logic(data) -> bool:
     try:
-        pr_data = data.get("data", {}).get("pullrequest", {})
+        get_logger().info(f"checking if PR should be processed: {data}")
+        pr_data = data.get("pullrequest", {})
         title = pr_data.get("title", "")
         source_branch = pr_data.get("source", {}).get("branch", {}).get("name", "")
         target_branch = pr_data.get("destination", {}).get("branch", {}).get("name", "")
@@ -154,6 +155,8 @@ def should_process_pr_logic(data) -> bool:
 
         ignore_pr_source_branches = get_settings().get("CONFIG.IGNORE_PR_SOURCE_BRANCHES", [])
         ignore_pr_target_branches = get_settings().get("CONFIG.IGNORE_PR_TARGET_BRANCHES", [])
+        get_logger().info(
+                    f"got PR with source branch '{source_branch}', target branch '{target_branch}' and ignore settings: {ignore_pr_target_branches}, {ignore_pr_source_branches}")
         if (ignore_pr_source_branches or ignore_pr_target_branches):
             if any(re.search(regex, source_branch) for regex in ignore_pr_source_branches):
                 get_logger().info(
@@ -187,7 +190,10 @@ async def handle_github_webhooks(background_tasks: BackgroundTasks, request: Req
                 return "OK"
 
             # Check if the PR should be processed
-            if data.get("event", "") == "pullrequest:created":
+            event = request.headers.get("x-event-key", None)
+            data['event'] = event
+            get_logger().info(f"checking if PR should be processed step 0: {data}")
+            if event == "pullrequest:created":
                 if not should_process_pr_logic(data):
                     return "OK"
 
@@ -209,7 +215,6 @@ async def handle_github_webhooks(background_tasks: BackgroundTasks, request: Req
                 bearer_token = await get_bearer_token(shared_secret, client_key)
                 context['bitbucket_bearer_token'] = bearer_token
             context["settings"] = copy.deepcopy(global_settings)
-            event = request.headers.get("x-event-key", None)
             agent = PRAgent()
             if event == "pullrequest:created":
                 pr_url = data["pullrequest"]["links"]["html"]["href"]

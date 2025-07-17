@@ -1,6 +1,8 @@
 import difflib
 import json
+import os
 import re
+from pathlib import Path
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
@@ -83,6 +85,15 @@ class BitbucketProvider(GitProvider):
                    f"{self.pr.destination_branch}/.pr_agent.toml")
             response = requests.request("GET", url, headers=self.headers)
             if response.status_code == 404:  # not found
+                # Check for workspace_slug_repo_slug_config.toml in the new folder
+                get_logger().debug(f"Fetching repo settings from repo_settings folder")
+                repo_config_filename = f"{self.workspace_slug}_{self.repo_slug}_config.toml"
+                repo_config_path = Path(get_settings().config.repo_settings_folder_path) / repo_config_filename
+                if repo_config_path.is_file():
+                    get_logger().debug(f"Fetching repo settings from file: {repo_config_path}")
+                    with open(repo_config_path, 'r') as f:
+                        contents = f.read()
+                    return contents.encode('utf-8')
                 return ""
             contents = response.text.encode('utf-8')
             return contents

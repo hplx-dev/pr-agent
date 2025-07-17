@@ -331,7 +331,7 @@ async def retry_with_fallback_models(f: Callable, model_type: ModelType = ModelT
             return await f(model)
         except:
             get_logger().warning(
-                f"Failed to generate prediction with {model}"
+                f"Failed to generate prediction with {model} {traceback.format_exc()}"
             )
             if i == len(all_models) - 1:  # If it's the last iteration
                 raise Exception(f"Failed to generate prediction with any model of {all_models}")
@@ -415,6 +415,32 @@ def get_pr_multi_diffs(git_provider: GitProvider,
         add_line_numbers_to_hunks=add_line_numbers,
         patch_extra_lines_before=PATCH_EXTRA_LINES_BEFORE,
         patch_extra_lines_after=PATCH_EXTRA_LINES_AFTER)
+    
+    if get_settings().pr_code_suggestions.per_file_patch_enable:
+        final_diff_list = []
+        get_logger().debug(f"per file patch enabled")
+        for file in sorted_files:
+            original_file_content_str = file.base_file
+            new_file_content_str = file.head_file
+            patch = file.patch
+            if not patch:
+                continue
+
+            patch = handle_patch_deletions(patch, original_file_content_str, new_file_content_str, file.filename, file.edit_type)
+            if patch is None:
+                continue
+
+            if add_line_numbers:
+                patch = decouple_and_convert_to_hunks_with_lines_numbers(patch, file)
+            else:
+                patch = f"\n\n## File: '{file.filename.strip()}'\n\n{patch.strip()}\n"
+
+            if file.ai_file_summary and get_settings().get("config.enable_ai_metadata", False):
+                patch = add_ai_summary_top_patch(file, patch)
+
+            if patch:
+                final_diff_list.append(patch.strip())
+        return final_diff_list
 
     # if we are under the limit, return the full diff
     if total_tokens + OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD < get_max_tokens(model):

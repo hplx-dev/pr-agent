@@ -155,12 +155,12 @@ new_score_mechanism_th_medium=7
 # params for '/improve --extended' mode
 auto_extended_mode=true
 num_code_suggestions_per_chunk=4
-max_number_of_calls = 3
+max_number_of_calls = 100
 parallel_calls = true
 
 final_clip_factor = 0.8
-decouple_hunks = false
-per_file_patch_enable = false
+decouple_hunks = true
+per_file_patch_enable = true
 # self-review checkbox
 demand_code_suggestions_self_review=false # add a checkbox for the author to self-review the code suggestions
 code_suggestions_self_review_text= "**Author self-review**: I have reviewed the PR code suggestions, and addressed the relevant ones."
