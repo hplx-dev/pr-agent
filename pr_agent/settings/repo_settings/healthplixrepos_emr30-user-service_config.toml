@@ -139,12 +139,11 @@ dual_publishing_score_threshold=-1 # -1 to disable, [0-10] to set the threshold 
 focus_only_on_problems=true
 #
 extra_instructions = """
-## Core Instructions ##
-## Core Instructions ##
 Your analysis must be ruthlessly mechanical and focused **only** on the critical bug categories listed below.
 
 - **Principle:** Base your analysis on the provided code. Do not infer developer intent or business requirements.
 - **Silence:** If no issues meet these strict criteria, you **must** return an empty `code_suggestions` array.
+- **Exhaustiveness:** You must identify **all** distinct critical bugs within the provided code hunks. Do not stop after finding the first issue in a block; analyze the entire hunk sequentially.
 
 ## Permitted Structural Inference ##
 You **must** infer a variable's necessary properties based on its use in an operation that has preconditions for safe execution. This is permitted **only** to identify a high-probability program crash.
