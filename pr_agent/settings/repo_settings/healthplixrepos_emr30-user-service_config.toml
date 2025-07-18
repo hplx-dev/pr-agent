@@ -141,45 +141,33 @@ focus_only_on_problems=true
 extra_instructions = """
 Your analysis must be ruthlessly mechanical and focused **only** on the critical bug categories listed below.
 
-## Analysis Mandate: A Ruthless, Mechanical Process
+## The Sub-Expression Analysis Mandate
 
-Your analysis is not a creative task; it is a mechanical audit. You **must** follow this procedure for **every PR diff** without deviation.
+This is the most critical rule and it precedes all others. For every new line of code containing an expression, you **MUST** follow this procedure. This is not optional.
 
--   **Principle:** Base your analysis on the provided code. Do not infer developer intent or business requirements.
--   **Silence:** If no issues meet the strict criteria defined in the "Critical Bug Categories" section, you **must** return an empty `code_suggestions` array.
--   **Exhaustiveness:** You **must** analyze **every new line of code** (prefixed with `+`). For each line, you must identify **all** distinct critical bugs. Do not stop after finding the first issue; analyze the entire line and hunk sequentially.
+1.  **Identify All Expressions:** Scan the line for any expression involving member access (`.`), pointer dereferencing (`*`), or indexing (`[]`).
+2.  **Decompose the Expression:** For each expression, identify its "base" variable and the "accessed" part.
+    *   In `u.CustomFields`, the base is `u`, and the access is `.CustomFields`.
+    *   In `a.b.c`, you must first analyze `a.b`. To do that, you must first analyze its base, `a`.
+    *   In `collection[index]`, the base is `collection`.
+3.  **Analyze the Base First:** Before analyzing the full expression, you **MUST** first apply the "Mandatory Precondition Analysis" (defined below) to its base variable. For example, before you even consider what `u.CustomFields` is, you must first verify that `u` is not `nil`.
+4.  **Report Immediately:** If the base variable is not protected by a precondition check, you must report this as a "Program Crash/Panic" bug.
+5.  **Proceed Only if Safe:** Only after verifying the base is safe can you proceed to analyze the full expression or the next part of a chain.
 
 ## Mandatory Precondition Analysis (For Program Crash/Panic Detection)
 
-This is the primary mechanism for identifying critical crash bugs. You **must** apply it to every new line of code (`+` lines).
+You apply this analysis as directed by the Sub-Expression Mandate above.
 
--   **Principle:** An operation that can crash if its input is invalid (e.g., `nil` pointer, out-of-bounds index) is considered "at-risk." For example, accessing `a.b` is an at-risk operation on the variable `a`. You must assume `a` could be `nil` unless the code *proves* otherwise.
-
--   **Action:** For each `+` line, you must execute the following verification procedure:
-    1.  **Identify At-Risk Operations:** Scan the line for any of the following patterns:
-        -   **Dereferencing:** `variable.field`, `variable->field`, `variable.method()`.
-        -   **Pointer Dereferencing:** `*pointer`.
-        -   **Indexing:** `collection[index]`, `slice[index]`.
-        -   **Division:** `numerator / denominator`.
-        -   **Unsafe Type Assertions/Casts:** `value.(MyType)` (Go), `(MyType)value` (Java/C# where it can panic/throw).
-
-    2.  **For EACH At-Risk Operation Found:**
-        a.  **Identify the Target Variable and its Precondition.**
-            -   For `a.b`, the target is `a`, and the precondition is `a != nil`. For a chain like `a.b.c`, this process must be applied first to `a` (to safely get `.b`), and then to `a.b` (to safely get `.c`).
-            -   For `x[i]`, targets are `x` and `i`. Preconditions are `x != nil`, `i >= 0`, and `i < len(x)`.
-            -   For `m / n`, the target is `n`, and the precondition is `n != 0`.
-            -   For `*p`, the target is `p`, and the precondition is `p != nil`.
-
-        b.  **Verify the Precondition:** Look for **explicit, preceding code** in the local control flow that *guarantees* the precondition is met.
-            -   **Sufficient Proof:** An `if variable == nil { return }` check, an `if variable != nil { ... }` block enclosing the operation, or a failed-type-assertion check.
-            -   **Insufficient Proof:** Relying on function naming, comments, or assumptions about how the function is called from elsewhere.
-
-        c.  **Report if Unverified:** If you cannot find explicit code that enforces the precondition, you **must** report it as a critical bug under the "Program Crash/Panic" category.
+-   **Principle:** An operation is "at-risk" if it can crash on invalid input. You must assume any variable can be invalid (e.g., `nil`, out-of-bounds) unless proven otherwise.
+-   **Action:**
+    a.  **Identify the Precondition:** For a target variable, what must be true for the operation to be safe? (e.g., for `u.CustomFields`, the precondition for `u` is `u != nil`).
+    b.  **Verify the Precondition:** Look for **explicit, preceding code** in the local control flow that *guarantees* the precondition is met. A check on the same line (e.g., `if u != nil && u.CustomFields != nil`) counts as verification.
+    c.  **Report if Unverified:** If you cannot find an explicit check enforcing the precondition, you **must** report it.
 
 ## Critical Bug Categories (The ONLY issues to report)
 
 1.  **Program Crash/Panic:**
-    -   Guaranteed or highly probable crashes identified via the **Mandatory Precondition Analysis** rule above.
+    -   Guaranteed or highly probable crashes identified via the analysis mandates above. This includes nil-pointer dereferences, out-of-bounds indexing, and division-by-zero.
 
 2.  **Infinite Loop:**
     -   Loops with entry/exit conditions that are logically impossible to meet.
