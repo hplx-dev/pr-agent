@@ -139,54 +139,83 @@ dual_publishing_score_threshold=-1 # -1 to disable, [0-10] to set the threshold 
 focus_only_on_problems=true
 #
 extra_instructions = """
-Your analysis must be ruthlessly mechanical and focused **only** on the critical bug categories listed below.
+Your analysis must be ruthlessly mechanical and focused **only** on the critical bug categories listed below. You must systematically apply all relevant mandates to every piece of new code.
 
-## The Sub-Expression Analysis Mandate
+## The Sub-Expression Analysis Mandate (For Program Crash/Panic)
 
-This is the most critical rule and it precedes all others. For every new line of code containing an expression, you **MUST** follow this procedure. This is not optional.
+This is a critical rule that precedes all others. For every new line of code containing an expression, you **MUST** follow this procedure. This is not optional.
 
 1.  **Identify All Expressions:** Scan the line for any expression involving member access (`.`), pointer dereferencing (`*`), or indexing (`[]`).
 2.  **Decompose the Expression:** For each expression, identify its "base" variable and the "accessed" part.
     *   In `u.CustomFields`, the base is `u`, and the access is `.CustomFields`.
     *   In `a.b.c`, you must first analyze `a.b`. To do that, you must first analyze its base, `a`.
     *   In `collection[index]`, the base is `collection`.
-3.  **Analyze the Base First:** Before analyzing the full expression, you **MUST** first apply the "Mandatory Precondition Analysis" (defined below) to its base variable. For example, before you even consider what `u.CustomFields` is, you must first verify that `u` is not `nil`.
-4.  **Report Immediately:** If the base variable is not protected by a precondition check, you must report this as a "Program Crash/Panic" bug.
+3.  **Analyze the Base First:** Before analyzing the full expression, you **MUST** first apply the "Mandatory Precondition Analysis" (defined below) to its base variable.
+4.  **Report Immediately:** If the base variable is not protected by a precondition check (e.g., checking for `nil` or bounds), you must report this as a "Program Crash/Panic" bug.
 5.  **Proceed Only if Safe:** Only after verifying the base is safe can you proceed to analyze the full expression or the next part of a chain.
 
-## Mandatory Precondition Analysis (For Program Crash/Panic Detection)
+## Mandatory Precondition Analysis
 
 You apply this analysis as directed by the Sub-Expression Mandate above.
 
 -   **Principle:** An operation is "at-risk" if it can crash on invalid input. You must assume any variable can be invalid (e.g., `nil`, out-of-bounds) unless proven otherwise.
 -   **Action:**
-    a.  **Identify the Precondition:** For a target variable, what must be true for the operation to be safe? (e.g., for `u.CustomFields`, the precondition for `u` is `u != nil`).
-    b.  **Verify the Precondition:** Look for **explicit, preceding code** in the local control flow that *guarantees* the precondition is met. A check on the same line (e.g., `if u != nil && u.CustomFields != nil`) counts as verification.
+    a.  **Identify the Precondition:** For a target variable, what must be true for the operation to be safe? (e.g., for `u.CustomFields`, the precondition for `u` is `u != nil`; for `c[i]`, the precondition is `i < len(c)`).
+    b.  **Verify the Precondition:** Look for **explicit, preceding code** in the local control flow that *guarantees* the precondition is met.
     c.  **Report if Unverified:** If you cannot find an explicit check enforcing the precondition, you **must** report it.
+
+## Concurrency Hazard Mandate (For Provable Data Corruption)
+
+You **MUST** apply this analysis when reviewing any new code (`+` lines) that involves shared state.
+
+1.  **Identify Shared State:** Identify package-level variables, heap-allocated objects passed by reference between goroutines, or member variables of shared objects.
+2.  **Identify Access Patterns:** For each shared state variable, analyze if it is being read or written. Pay close attention to conditional initialization (`if sharedVar == nil`).
+3.  **Verify Synchronization:**
+    *   **Lazy Initialization:** If a shared resource is initialized conditionally, you **MUST** verify this is protected by a primitive like `sync.Once` or a mutex.
+    *   **Concurrent Read/Write:** If a variable can be written by one goroutine and read/written by another, you **MUST** verify that a synchronization mechanism (mutex, RWMutex, atomic operation) protects **all** accesses.
+4.  **Report Immediately:** If shared state access is not protected by an appropriate synchronization primitive, you **MUST** report this as "Provable Data Corruption."
+
+## Security Taint Analysis Mandate (For Critical Security Vulnerabilities)
+
+You **MUST** apply this data flow analysis to detect injection-style vulnerabilities.
+
+1.  **Identify Taint Sources:** Mark any variable that receives data from an external, untrusted source as "tainted." Sources include: HTTP request bodies, headers, query parameters (`r.URL.Query()`), form values, environment variables (`os.Getenv`), file contents, and database query results.
+2.  **Propagate Taint:** If a tainted variable is used in an operation (e.g., assignment, string concatenation) to create or modify another variable, the resulting variable **MUST** also be marked as tainted.
+3.  **Identify Sinks:** Identify security-sensitive functions ("Sinks") where tainted data could cause harm. Sinks include:
+    *   **SQL:** `db.Query`, `db.Exec`
+    *   **Command Execution:** `exec.Command`, `os.StartProcess`
+    *   **File System:** `os.OpenFile`, `os.ReadFile` (when path is tainted)
+    *   **HTML/Template:** `template.HTML`, writing raw data to an `http.ResponseWriter`
+4.  **Verify Sanitization/Parameterization:** When a tainted variable is passed to a Sink, you **MUST** verify it was either processed by a known sanitization function (`filepath.Clean`, `url.QueryEscape`) or that the Sink uses a safe mechanism (e.g., parameterized SQL queries instead of string concatenation).
+5.  **Report Immediately:** If a tainted variable reaches a Sink without being sanitized or handled safely, you **MUST** report it as a "Critical Security Vulnerability."
+
+## Resource Lifecycle Mandate (For Resource Leaks)
+
+You **MUST** apply this analysis to track the lifecycle of finite system resources.
+
+1.  **Identify Resource Acquisition:** Identify any function call that acquires a resource that must be explicitly released. This includes:
+    *   `os.Open`, `os.Create`
+    *   `sql.Open`, `db.Query`
+    *   `net.Dial`, `http.Get`
+    *   Starting a goroutine: `go func() { ... }()`
+2.  **Track the Resource Handle:** Note the variable that receives the resource handle (e.g., `file`, `db`, `rows`, a `sync.WaitGroup` for a goroutine).
+3.  **Verify Release on ALL Paths:** Within the scope where the resource was acquired, you **MUST** trace all possible exit paths (all `return` statements, panics, and the normal function end).
+4.  **Report Immediately:** If there exists **any** execution path where the corresponding release action (`.Close()`, `.Done()`, `cancel()`) is not provably called, you **MUST** report it as a "Resource Leak." A `defer` statement is the most common valid pattern.
 
 ## Critical Bug Categories (The ONLY issues to report)
 
-1.  **Program Crash/Panic:**
-    -   Guaranteed or highly probable crashes identified via the analysis mandates above. This includes nil-pointer dereferences, out-of-bounds indexing, and division-by-zero.
-
-2.  **Infinite Loop:**
-    -   Loops with entry/exit conditions that are logically impossible to meet.
-
-3.  **Critical Security Vulnerability:**
-    -   Direct, exploitable vulnerabilities like SQL injection, command injection, hardcoded secrets, or use of insecure random numbers for crypto.
-
-4.  **Provable Data Corruption:**
-    -   Mechanical data writing errors like race conditions on shared memory or missing database transactions where atomicity is mechanically essential.
-
-5.  **Resource Leak:**
-    -   A finite system resource (e.g., file handle, network connection, goroutine) is acquired and **provably never released or terminated**.
+1.  **Program Crash/Panic:** A nil-pointer dereference, out-of-bounds index, or other fatal error identified by the **Sub-Expression Analysis Mandate**.
+2.  **Provable Data Corruption:** A race condition on shared state identified by the **Concurrency Hazard Mandate**.
+3.  **Critical Security Vulnerability:** An injection or exposure vulnerability identified by the **Security Taint Analysis Mandate**.
+4.  **Resource Leak:** A resource that is acquired but not released on all execution paths, as identified by the **Resource Lifecycle Mandate**.
+5.  **Infinite Loop:** A loop with entry or exit conditions that are logically impossible to meet (e.g., `for i := 0; i < 10; i--`).
 
 ## What You MUST Ignore
 
--   **ALL Business Logic:** Do not comment on changes to conditions, control flow, or outputs.
+-   **ALL Business Logic:** Do not comment on changes to conditions, control flow, or outputs if they do not violate a mandate.
 -   **ALL Code Style:** Ignore formatting, naming, comments, and "best practices."
 -   **Performance:** Do not suggest optimizations unless they fix a defined Resource Leak.
--   **Safe Protobuf Getters:** Chained `.Get...()` calls are nil-safe by design.
+-   **Safe Protobuf Getters:** Chained `.Get...()` calls are nil-safe by design and should be ignored.
 """
 enable_help_text=false
 enable_chat_text=false
