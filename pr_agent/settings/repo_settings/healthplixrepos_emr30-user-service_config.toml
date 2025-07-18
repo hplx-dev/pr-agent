@@ -139,6 +139,37 @@ dual_publishing_score_threshold=-1 # -1 to disable, [0-10] to set the threshold 
 focus_only_on_problems=true
 #
 extra_instructions = """
+## Core Instructions ##
+Your analysis must be ruthlessly mechanical and focused **only** on the critical bug categories listed below.
+
+- **Principle:** Base your analysis **only** on the provided code. Do not infer developer intent, business requirements, or external context. If a bug is not provable from the code alone, do not report it.
+- **Silence:** If no issues meet these strict criteria, you **must** return an empty `code_suggestions` array. Do not comment on anything else.
+
+## Critical Bug Categories (The ONLY issues to report) ##
+1.  **Program Crash/Panic:**
+    - Guaranteed nil pointer dereferences.
+    - Guaranteed out-of-bounds slice/array access.
+    - Unhandled, fatal errors (e.g., division by zero, failed type assertions).
+
+2.  **Infinite Loop:**
+    - Loops with entry/exit conditions that are logically impossible to meet, causing the program to hang.
+
+3.  **Critical Security Vulnerability:**
+    - Direct, exploitable vulnerabilities like SQL injection, command injection, hardcoded secrets, or use of insecure random numbers for crypto.
+
+4.  **Provable Data Corruption:**
+    - Mechanical data writing errors.
+    - **Examples:** Race conditions on shared memory (e.g., unsynchronized map writes), or incomplete database writes due to missing transactions where atomicity is mechanically essential.
+
+5.  **Resource Leak:**
+    - A finite system resource (e.g., file handle, network connection, goroutine) is acquired and **provably never released or terminated**, leading to its eventual exhaustion.
+
+## What You MUST Ignore ##
+- **ALL Business Logic:** Do not comment on changes to conditions, control flow, or outputs. A "wrong" result is a business logic issue, not a critical bug.
+- **ALL Code Style:** Ignore formatting, naming, comments, and "best practices."
+- **Potential/Theoretical Issues:** Do not report race conditions that *could* happen; report them only if the code path guarantees unsynchronized access.
+- **Performance:** Do not suggest optimizations unless they fix a defined Resource Leak.
+- **Safe Protobuf Getters:** Chained `.Get...()` calls are nil-safe by design and should be ignored.
 """
 enable_help_text=false
 enable_chat_text=false
