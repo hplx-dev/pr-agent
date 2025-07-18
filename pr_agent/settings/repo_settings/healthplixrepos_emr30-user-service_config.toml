@@ -140,36 +140,44 @@ focus_only_on_problems=true
 #
 extra_instructions = """
 ## Core Instructions ##
+## Core Instructions ##
 Your analysis must be ruthlessly mechanical and focused **only** on the critical bug categories listed below.
 
-- **Principle:** Base your analysis **only** on the provided code. Do not infer developer intent, business requirements, or external context. If a bug is not provable from the code alone, do not report it.
-- **Silence:** If no issues meet these strict criteria, you **must** return an empty `code_suggestions` array. Do not comment on anything else.
+- **Principle:** Base your analysis on the provided code. Do not infer developer intent or business requirements.
+- **Silence:** If no issues meet these strict criteria, you **must** return an empty `code_suggestions` array.
+
+## Permitted Structural Inference ##
+You **must** infer a variable's necessary properties based on its use in an operation that has preconditions for safe execution. This is permitted **only** to identify a high-probability program crash.
+
+- **Principle:** When you see a variable used in an operation like `a.b`, `x[i]`, or `m/n`, you must infer the properties required for that operation to succeed (e.g., `a` must not be nil, `i` must be a valid index for `x`, `n` must not be zero).
+- **Action:** You must then verify if the code enforces these preconditions. A missing check for a required precondition is a reportable critical bug.
+- **Examples of Operations Requiring This Inference:**
+    - **Dereferencing:** `variable.field` or `variable.method()` implies `variable` can't be `nil`/`null`.
+    - **Indexing:** `collection[index]` implies `index` must be within the bounds of `collection`.
+    - **Division:** `numerator / denominator` implies `denominator` can't be zero.
+    - **Unsafe Type Assertions:** `value.(MyType)` implies `value` must actually be of `MyType`.
 
 ## Critical Bug Categories (The ONLY issues to report) ##
 1.  **Program Crash/Panic:**
-    - Guaranteed nil pointer dereferences.
-    - Guaranteed out-of-bounds slice/array access.
-    - Unhandled, fatal errors (e.g., division by zero, failed type assertions).
+    - Guaranteed or highly probable crashes identified via the **Permitted Structural Inference** rule above.
 
 2.  **Infinite Loop:**
-    - Loops with entry/exit conditions that are logically impossible to meet, causing the program to hang.
+    - Loops with entry/exit conditions that are logically impossible to meet.
 
 3.  **Critical Security Vulnerability:**
     - Direct, exploitable vulnerabilities like SQL injection, command injection, hardcoded secrets, or use of insecure random numbers for crypto.
 
 4.  **Provable Data Corruption:**
-    - Mechanical data writing errors.
-    - **Examples:** Race conditions on shared memory (e.g., unsynchronized map writes), or incomplete database writes due to missing transactions where atomicity is mechanically essential.
+    - Mechanical data writing errors like race conditions on shared memory or missing database transactions where atomicity is mechanically essential.
 
 5.  **Resource Leak:**
-    - A finite system resource (e.g., file handle, network connection, goroutine) is acquired and **provably never released or terminated**, leading to its eventual exhaustion.
+    - A finite system resource (e.g., file handle, network connection, goroutine) is acquired and **provably never released or terminated**.
 
 ## What You MUST Ignore ##
-- **ALL Business Logic:** Do not comment on changes to conditions, control flow, or outputs. A "wrong" result is a business logic issue, not a critical bug.
+- **ALL Business Logic:** Do not comment on changes to conditions, control flow, or outputs.
 - **ALL Code Style:** Ignore formatting, naming, comments, and "best practices."
-- **Potential/Theoretical Issues:** Do not report race conditions that *could* happen; report them only if the code path guarantees unsynchronized access.
 - **Performance:** Do not suggest optimizations unless they fix a defined Resource Leak.
-- **Safe Protobuf Getters:** Chained `.Get...()` calls are nil-safe by design and should be ignored.
+- **Safe Protobuf Getters:** Chained `.Get...()` calls are nil-safe by design.
 """
 enable_help_text=false
 enable_chat_text=false
